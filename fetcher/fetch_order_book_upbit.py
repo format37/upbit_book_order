@@ -69,6 +69,109 @@ def connect_db():
         logging.error(f"Failed to connect to database: {exc}")
         raise
 
+def check_and_create_tables(conn):
+    """Check if required tables exist and create them if they don't"""
+    try:
+        cursor = conn.cursor()
+        
+        # Check if tables exist
+        cursor.execute("""
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name IN ('upbit_symbols', 'upbit_orderbook_snapshots', 'upbit_order_book_data')
+        """)
+        existing_tables = {row[0] for row in cursor.fetchall()}
+        required_tables = {'upbit_symbols', 'upbit_orderbook_snapshots', 'upbit_order_book_data'}
+        
+        if required_tables.issubset(existing_tables):
+            logging.info("All required tables exist")
+            cursor.close()
+            return True
+        
+        missing_tables = required_tables - existing_tables
+        logging.info(f"Missing tables: {missing_tables}. Creating all required tables...")
+        
+        # Create Upbit symbols lookup table
+        logging.info("Creating upbit_symbols table...")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS upbit_symbols (
+                symbol_id SERIAL PRIMARY KEY,
+                symbol_code VARCHAR(20) UNIQUE NOT NULL,
+                base_currency VARCHAR(10) NOT NULL,
+                quote_currency VARCHAR(10) NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        
+        # Create orderbook snapshots metadata table
+        logging.info("Creating upbit_orderbook_snapshots table...")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS upbit_orderbook_snapshots (
+                snapshot_id SERIAL PRIMARY KEY,
+                symbol_id INTEGER NOT NULL REFERENCES upbit_symbols(symbol_id),
+                timestamp BIGINT NOT NULL,
+                total_ask_size NUMERIC,
+                total_bid_size NUMERIC,
+                stream_type VARCHAR(20),
+                units_count SMALLINT,
+                received_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        
+        # Create main order book data table for individual units
+        logging.info("Creating upbit_order_book_data table...")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS upbit_order_book_data (
+                id SERIAL PRIMARY KEY,
+                snapshot_id INTEGER NOT NULL REFERENCES upbit_orderbook_snapshots(snapshot_id),
+                symbol_id INTEGER NOT NULL REFERENCES upbit_symbols(symbol_id),
+                timestamp BIGINT NOT NULL,
+                ask_price NUMERIC NOT NULL,
+                bid_price NUMERIC NOT NULL,
+                ask_size NUMERIC NOT NULL,
+                bid_size NUMERIC NOT NULL,
+                unit_level SMALLINT NOT NULL,
+                received_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        
+        # Create indexes for performance
+        logging.info("Creating indexes...")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_upbit_symbol_timestamp ON upbit_orderbook_snapshots(symbol_id, timestamp);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_upbit_snapshot_timestamp ON upbit_order_book_data(snapshot_id, timestamp);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_upbit_symbol_level ON upbit_order_book_data(symbol_id, unit_level, timestamp);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_upbit_prices ON upbit_order_book_data(ask_price, bid_price);")
+        
+        # Insert default symbols if upbit_symbols table was created
+        if 'upbit_symbols' in missing_tables:
+            logging.info("Inserting default symbols...")
+            default_symbols = [
+                ('USDT-BTC', 'BTC', 'USDT'),
+                ('USDT-ETH', 'ETH', 'USDT'),
+                ('USDT-XRP', 'XRP', 'USDT'),
+                ('USDT-ADA', 'ADA', 'USDT'),
+                ('USDT-DOGE', 'DOGE', 'USDT'),
+                ('USDT-SOL', 'SOL', 'USDT'),
+                ('USDT-MATIC', 'MATIC', 'USDT'),
+                ('USDT-AVAX', 'AVAX', 'USDT'),
+            ]
+            cursor.executemany("""
+                INSERT INTO upbit_symbols (symbol_code, base_currency, quote_currency)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (symbol_code) DO NOTHING
+            """, default_symbols)
+        
+        conn.commit()
+        cursor.close()
+        logging.info("✓ All required tables and indexes created successfully")
+        return True
+        
+    except Exception as exc:
+        conn.rollback()
+        logging.error(f"Error creating tables: {exc}")
+        raise
+
 def get_or_create_symbol_id(conn, symbol_code: str) -> int:
     """Return symbol_id for given Upbit symbol code, inserting if needed."""
     try:
@@ -278,6 +381,15 @@ def read_symbols_from_file(file_path: Path) -> List[str]:
 
 async def main_async():
     args = parse_args()
+    
+    # Check and create required tables before starting
+    logging.info("Checking database tables...")
+    tmp_conn = connect_db()
+    try:
+        check_and_create_tables(tmp_conn)
+    finally:
+        tmp_conn.close()
+    
     # Determine symbols list according to precedence (CLI > file > DB)
     if args.symbols:
         symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
