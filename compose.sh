@@ -1,4 +1,4 @@
-source ./env
+source .env
 
 # Break if $CONTAINER_NAME is not set
 if [ -z "$CONTAINER_NAME" ]; then

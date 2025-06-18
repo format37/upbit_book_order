@@ -32,6 +32,8 @@ import psycopg2
 import websockets
 import argparse
 
+import os
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -42,11 +44,13 @@ logging.basicConfig(
     ],
 )
 
+db_password = os.getenv("DB_PASSWORD")
+
 # Database configuration (adjust as needed)
 DB_CONFIG = {
     "dbname": "dnk",
     "user": "user",
-    "password": "pass",
+    "password": db_password,
     "host": "localhost",
     "port": "5432",
 }

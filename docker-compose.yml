@@ -14,3 +14,4 @@ services:
     network_mode: host
     environment:
       - TZ=UTC
+      - DB_PASSWORD=${DB_PASSWORD}
