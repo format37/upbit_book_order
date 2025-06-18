@@ -1,0 +1,2 @@
+psycopg2==2.9.10
+websockets==15.0.1
