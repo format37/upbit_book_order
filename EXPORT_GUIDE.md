@@ -52,16 +52,17 @@ python3 -c "import pandas, pyarrow, psycopg2; print('✓ All dependencies instal
 
 ---
 
-## Step 3: Update Database Password (if needed)
+## Step 3: Verify .env File (Database Password)
 
-If your database password is different from "pass", update it in the script:
+The script automatically reads the database password from your `.env` file. Verify it exists:
 
 ```bash
-# Edit the DB_CONFIG section in export_to_parquet.py
-nano export_to_parquet.py
-# Or use your password from environment variable:
-# sed -i 's/"password": "pass"/"password": "'$DB_PASSWORD'"/' export_to_parquet.py
+cd ~/projects/upbit_book_order
+cat .env
+# Should show: DB_PASSWORD=your_password_here
 ```
+
+The script will use this password automatically - no manual configuration needed!
 
 ---
 

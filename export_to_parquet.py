@@ -24,12 +24,16 @@ from typing import Optional
 import pandas as pd
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Database configuration
 DB_CONFIG = {
     "dbname": "dnk",
     "user": "user",
-    "password": "pass",  # Update if needed
+    "password": os.getenv("DB_PASSWORD", "pass"),  # Read from .env file
     "host": "localhost",
     "port": "5432",
 }
