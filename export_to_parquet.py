@@ -300,7 +300,7 @@ def main():
 
     # Connect to database
     conn = connect_db()
-    conn.autocommit = True  # Required for server-side cursors
+    # Note: autocommit must be False (default) for server-side cursors to work
 
     try:
         # Export symbols table
